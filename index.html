@@ -1375,11 +1375,11 @@
                         <div class="config-item">
                             <label>规格：</label>
                             <select id="boardSizeSpec" onchange="handleBoardSizeSpecChange()">
-                                <option value="8">8×8</option>
-                                <option value="10">10×10</option>
-                                <option value="12">12×12</option>
+                                <option value="6x8">6×8</option>
+                                <option value="8x10">8×10</option>
+                                <option value="10x12">10×12</option>
                             </select>
-                            <input type="hidden" id="width" value="8">
+                            <input type="hidden" id="width" value="6">
                             <input type="hidden" id="height" value="8">
                         </div>
                     </div>
@@ -1706,8 +1706,15 @@
         const CONFIG_GROUP_STORAGE_KEY = 'levelmake.configGroups.v1';
         const BOARD_BACKGROUND_MIN_INDEX = 1;
         const BOARD_BACKGROUND_MAX_INDEX = 9;
-        const BOARD_SIZE_SPECS = [8, 10, 12];
-        const DEFAULT_BOARD_SIZE_SPEC = 8;
+        const BOARD_SIZE_SPECS = [
+            { key: '6x8', width: 6, height: 8, label: '6×8' },
+            { key: '8x10', width: 8, height: 10, label: '8×10' },
+            { key: '10x12', width: 10, height: 12, label: '10×12' }
+        ];
+        const BOARD_SIZE_SPEC_KEY_MAP = new Map(
+            BOARD_SIZE_SPECS.map((spec) => [spec.key, spec])
+        );
+        const DEFAULT_BOARD_SIZE_SPEC = '6x8';
         const ROW_BASE_DIRECTIONS = [3, 4, 6, 8];
         const COLUMN_BASE_DIRECTIONS = [0, 1, 2, 5, 7];
         const EMPTY_CELL_ID = 0;
@@ -2140,63 +2147,87 @@
             return 0;
         }
 
-        function normalizeBoardSizeSpecValue(rawValue, fallback = DEFAULT_BOARD_SIZE_SPEC) {
-            const fallbackSpec = BOARD_SIZE_SPECS.includes(Number(fallback))
-                ? Number(fallback)
-                : DEFAULT_BOARD_SIZE_SPEC;
-            const numericValue = Number(rawValue);
-            if (!Number.isFinite(numericValue)) return fallbackSpec;
-            const rounded = Math.round(numericValue);
-            if (BOARD_SIZE_SPECS.includes(rounded)) return rounded;
-
-            let nearest = BOARD_SIZE_SPECS[0];
-            let nearestDistance = Math.abs(rounded - nearest);
-            for (const spec of BOARD_SIZE_SPECS) {
-                const distance = Math.abs(rounded - spec);
-                if (distance < nearestDistance) {
-                    nearest = spec;
-                    nearestDistance = distance;
-                }
-            }
-            return nearest;
+        function getBoardSizeSpecByKey(specKey) {
+            return BOARD_SIZE_SPEC_KEY_MAP.get(String(specKey)) || null;
         }
 
-        function resolveBoardSizeSpecFromDimensions(widthValue, heightValue) {
+        function normalizeBoardSizeSpecToken(rawValue) {
+            return String(rawValue || '')
+                .toLowerCase()
+                .replace(/\s+/g, '')
+                .replace(/×/g, 'x')
+                .replace(/\*/g, 'x');
+        }
+
+        function normalizeBoardSizeSpecValue(rawValue, fallback = DEFAULT_BOARD_SIZE_SPEC) {
+            const fallbackEntry = getBoardSizeSpecByKey(fallback);
+            const fallbackKey = fallbackEntry ? fallbackEntry.key : DEFAULT_BOARD_SIZE_SPEC;
+
+            const normalizedToken = normalizeBoardSizeSpecToken(rawValue);
+            if (BOARD_SIZE_SPEC_KEY_MAP.has(normalizedToken)) return normalizedToken;
+
+            if (rawValue && typeof rawValue === 'object') {
+                const keyFromObject = resolveBoardSizeSpecFromDimensions(
+                    rawValue.width,
+                    rawValue.height,
+                    fallbackKey
+                );
+                if (BOARD_SIZE_SPEC_KEY_MAP.has(keyFromObject)) return keyFromObject;
+            }
+
+            return fallbackKey;
+        }
+
+        function isSupportedBoardSize(widthValue, heightValue) {
+            const width = Number(widthValue);
+            const height = Number(heightValue);
+            if (!Number.isFinite(width) || !Number.isFinite(height)) return false;
+            const roundedWidth = Math.round(width);
+            const roundedHeight = Math.round(height);
+            return BOARD_SIZE_SPECS.some(
+                (spec) => spec.width === roundedWidth && spec.height === roundedHeight
+            );
+        }
+
+        function resolveBoardSizeSpecFromDimensions(
+            widthValue,
+            heightValue,
+            fallback = DEFAULT_BOARD_SIZE_SPEC
+        ) {
             const width = Number(widthValue);
             const height = Number(heightValue);
             if (Number.isFinite(width) && Number.isFinite(height)) {
                 const widthRounded = Math.round(width);
                 const heightRounded = Math.round(height);
-                if (
-                    widthRounded === heightRounded &&
-                    BOARD_SIZE_SPECS.includes(widthRounded)
-                ) {
-                    return widthRounded;
+                for (const spec of BOARD_SIZE_SPECS) {
+                    if (spec.width === widthRounded && spec.height === heightRounded) {
+                        return spec.key;
+                    }
                 }
             }
 
             const selector = document.getElementById('boardSizeSpec');
             if (selector) {
-                const selected = normalizeBoardSizeSpecValue(selector.value, NaN);
-                if (BOARD_SIZE_SPECS.includes(selected)) return selected;
+                const selected = normalizeBoardSizeSpecValue(selector.value, fallback);
+                if (BOARD_SIZE_SPEC_KEY_MAP.has(selected)) return selected;
             }
 
-            const widthNormalized = normalizeBoardSizeSpecValue(width, NaN);
-            if (BOARD_SIZE_SPECS.includes(widthNormalized)) return widthNormalized;
-            const heightNormalized = normalizeBoardSizeSpecValue(height, NaN);
-            if (BOARD_SIZE_SPECS.includes(heightNormalized)) return heightNormalized;
-            return DEFAULT_BOARD_SIZE_SPEC;
+            const fallbackEntry = getBoardSizeSpecByKey(fallback);
+            return fallbackEntry ? fallbackEntry.key : DEFAULT_BOARD_SIZE_SPEC;
         }
 
         function syncBoardSizeDom(specValue) {
             const safeSpec = normalizeBoardSizeSpecValue(specValue, DEFAULT_BOARD_SIZE_SPEC);
+            const specEntry = getBoardSizeSpecByKey(safeSpec) ||
+                getBoardSizeSpecByKey(DEFAULT_BOARD_SIZE_SPEC);
+            if (!specEntry) return DEFAULT_BOARD_SIZE_SPEC;
             const selector = document.getElementById('boardSizeSpec');
-            if (selector) selector.value = String(safeSpec);
+            if (selector) selector.value = String(specEntry.key);
             const widthInput = document.getElementById('width');
-            if (widthInput) widthInput.value = String(safeSpec);
+            if (widthInput) widthInput.value = String(specEntry.width);
             const heightInput = document.getElementById('height');
-            if (heightInput) heightInput.value = String(safeSpec);
-            return safeSpec;
+            if (heightInput) heightInput.value = String(specEntry.height);
+            return specEntry.key;
         }
 
         function getCurrentBoardSizeSpec() {
@@ -2207,8 +2238,11 @@
         }
 
         function getCurrentBoardDimensions() {
-            const spec = getCurrentBoardSizeSpec();
-            return { width: spec, height: spec };
+            const specKey = getCurrentBoardSizeSpec();
+            const specEntry = getBoardSizeSpecByKey(specKey) ||
+                getBoardSizeSpecByKey(DEFAULT_BOARD_SIZE_SPEC);
+            if (!specEntry) return { width: 6, height: 8 };
+            return { width: specEntry.width, height: specEntry.height };
         }
 
         function setBoardSizeSpec(specValue, options = {}) {
@@ -2478,8 +2512,12 @@
                 const numberValue = Number(value);
                 return Number.isFinite(numberValue) ? numberValue : fallback;
             };
-            const importedWidth = toNumber(item?.['宽度'], DEFAULT_BOARD_SIZE_SPEC);
-            const importedHeight = toNumber(item?.['高度'], importedWidth);
+            const defaultSpec = getBoardSizeSpecByKey(DEFAULT_BOARD_SIZE_SPEC) || {
+                width: 6,
+                height: 8
+            };
+            const importedWidth = toNumber(item?.['宽度'], defaultSpec.width);
+            const importedHeight = toNumber(item?.['高度'], defaultSpec.height);
             return {
                 width: importedWidth,
                 height: importedHeight,
@@ -6248,12 +6286,9 @@ function runBatch(games, baseBoardData, direction) {
             exitPlayMode({ restoreBoard: false, silent: true });
             resetStepGenerationState();
             const { width, height } = getCurrentBoardDimensions();
-            const isValidSpec = (
-                width === height &&
-                BOARD_SIZE_SPECS.includes(width)
-            );
+            const isValidSpec = isSupportedBoardSize(width, height);
             if (!isValidSpec) {
-                alert('尺寸请设置为：8×8、10×10、12×12');
+                alert('尺寸请设置为：6×8、8×10、10×12');
                 return;
             }
 
@@ -7559,16 +7594,13 @@ function runBatch(games, baseBoardData, direction) {
             }
             const height = normalizedBoard.length;
             const width = normalizedBoard[0].length;
-            if (
-                width !== height ||
-                !BOARD_SIZE_SPECS.includes(width) ||
-                !BOARD_SIZE_SPECS.includes(height)
-            ) {
-                alert('读取失败：阵型尺寸仅支持 8×8、10×10、12×12。');
+            if (!isSupportedBoardSize(width, height)) {
+                alert('读取失败：阵型尺寸仅支持 6×8、8×10、10×12。');
                 return false;
             }
 
-            setBoardSizeSpec(width, { refreshPool: false, refreshInfo: false });
+            const specKey = resolveBoardSizeSpecFromDimensions(width, height);
+            setBoardSizeSpec(specKey, { refreshPool: false, refreshInfo: false });
             calculatePool();
             generateBoard();
 
