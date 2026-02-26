@@ -562,8 +562,8 @@
         }
 
         .cell {
-            width: 150px;
-            height: 162px;
+            width: 100%;
+            aspect-ratio: 1 / 1;
             background: transparent;
             border-radius: 4px;
             position: relative;
@@ -1315,7 +1315,7 @@
 
             .cell {
                 width: 80px;
-                height: 72px;
+                height: 80px;
             }
 
             .board {
@@ -1718,13 +1718,12 @@
         const ATTACHMENT_ICESHELL_ID = 5;
         const STONE_CELL_ID = 501;
         const WOOD_CELL_ID = 502;
-        const MAGNET_CELL_ID = 503;
+        const LEGACY_MAGNET_CELL_ID = 503;
         const ICE_LEVEL_1_CELL_ID = 504;
         const ICE_LEVEL_2_CELL_ID = 505;
         const ICE_LEVEL_3_CELL_ID = 506;
         const IMMOBILE_OBSTACLE_IDS = new Set([
             STONE_CELL_ID,
-            MAGNET_CELL_ID,
             ICE_LEVEL_1_CELL_ID,
             ICE_LEVEL_2_CELL_ID,
             ICE_LEVEL_3_CELL_ID
@@ -1732,7 +1731,6 @@
         const OBSTACLE_IDS = new Set([
             STONE_CELL_ID,
             WOOD_CELL_ID,
-            MAGNET_CELL_ID,
             ICE_LEVEL_1_CELL_ID,
             ICE_LEVEL_2_CELL_ID,
             ICE_LEVEL_3_CELL_ID
@@ -1751,7 +1749,6 @@
             { key: 'attach-iceshell', title: '冰壳', idLabel: '5000', preview: 'img/iceshell.png' },
             { key: 'stone', title: '石头', idLabel: '501', preview: 'img/shitou.png' },
             { key: 'wood', title: '木块', idLabel: '502', preview: 'img/mukuai.png' },
-            { key: 'magnet', title: '磁铁', idLabel: '503', preview: 'img/citie.png' },
             { key: 'ice1', title: '冰块1', idLabel: '504', preview: 'img/bing1.png' },
             { key: 'ice2', title: '冰块2', idLabel: '505', preview: 'img/bing2.png' },
             { key: 'ice3', title: '冰块3', idLabel: '506', preview: 'img/bing3.png' },
@@ -1763,7 +1760,6 @@
             'attach-iceshell',
             'stone',
             'wood',
-            'magnet',
             'ice1',
             'ice2',
             'ice3'
@@ -1773,7 +1769,6 @@
             const imageMap = {
                 [STONE_CELL_ID]: 'img/shitou.png',
                 [WOOD_CELL_ID]: 'img/mukuai.png',
-                [MAGNET_CELL_ID]: 'img/citie.png',
                 [ICE_LEVEL_1_CELL_ID]: 'img/bing1.png',
                 [ICE_LEVEL_2_CELL_ID]: 'img/bing2.png',
                 [ICE_LEVEL_3_CELL_ID]: 'img/bing3.png'
@@ -1805,7 +1800,8 @@
 
             if (cellId >= ATTACHMENT_MULTIPLIER) {
                 const attachmentId = Math.floor(cellId / ATTACHMENT_MULTIPLIER);
-                const baseId = cellId % ATTACHMENT_MULTIPLIER;
+                const rawBaseId = cellId % ATTACHMENT_MULTIPLIER;
+                const baseId = rawBaseId === LEGACY_MAGNET_CELL_ID ? STONE_CELL_ID : rawBaseId;
                 if (ATTACHMENT_IDS.has(attachmentId) && baseId > 0) {
                     return {
                         rawId: cellId,
@@ -1818,7 +1814,7 @@
 
             return {
                 rawId: cellId,
-                baseId: cellId,
+                baseId: cellId === LEGACY_MAGNET_CELL_ID ? STONE_CELL_ID : cellId,
                 attachmentId: null,
                 hasAttachment: false
             };
@@ -2096,9 +2092,6 @@
                     return;
                 case 'wood':
                     setCellIdAtPosition(row, col, WOOD_CELL_ID);
-                    return;
-                case 'magnet':
-                    setCellIdAtPosition(row, col, MAGNET_CELL_ID);
                     return;
                 case 'ice1':
                     setCellIdAtPosition(row, col, ICE_LEVEL_1_CELL_ID);
@@ -2875,7 +2868,7 @@
         }
 
         function getCellStepDistance() {
-            const fallback = { stepX: 151, stepY: 166 };
+            const fallback = { stepX: 151, stepY: 151 };
             const originCell = document.getElementById('cell-0-0');
             if (!originCell) return fallback;
 
@@ -3080,17 +3073,15 @@
             return `${row}-${col}`;
         }
 
-        function isCellDraggableInPlay(boardData, row, col, magnetLockSet = null) {
+        function isCellDraggableInPlay(boardData, row, col) {
             if (!Array.isArray(boardData)) return false;
-            const width = boardData[0]?.length || 0;
-            if (width === 0) return false;
+            if ((boardData[0]?.length || 0) === 0) return false;
 
             const rawId = boardData[row]?.[col] ?? EMPTY_CELL_ID;
             const parsed = decodeCellId(rawId);
             if (isEmptyCellId(parsed.baseId)) return false;
             if (!isRemovableBaseId(parsed.baseId)) return false;
             if (isImmobileObstacleBaseId(parsed.baseId)) return false;
-            if (magnetLockSet && magnetLockSet.has((row * width) + col)) return false;
             return true;
         }
 
@@ -3099,21 +3090,20 @@
             startRow,
             startCol,
             axis,
-            directionStep,
-            magnetLockSet = null
+            directionStep
         ) {
             if (!Array.isArray(boardData) || boardData.length === 0) return [];
             const height = boardData.length;
             const width = boardData[0]?.length || 0;
             if (width === 0) return [];
-            if (!isCellDraggableInPlay(boardData, startRow, startCol, magnetLockSet)) return [];
+            if (!isCellDraggableInPlay(boardData, startRow, startCol)) return [];
 
             const cells = [{ row: startRow, col: startCol }];
             const step = directionStep >= 0 ? 1 : -1;
             if (axis === 'horizontal') {
                 let nextCol = startCol + step;
                 while (nextCol >= 0 && nextCol < width) {
-                    if (!isCellDraggableInPlay(boardData, startRow, nextCol, magnetLockSet)) break;
+                    if (!isCellDraggableInPlay(boardData, startRow, nextCol)) break;
                     cells.push({ row: startRow, col: nextCol });
                     nextCol += step;
                 }
@@ -3124,7 +3114,7 @@
             if (axis === 'vertical') {
                 let nextRow = startRow + step;
                 while (nextRow >= 0 && nextRow < height) {
-                    if (!isCellDraggableInPlay(boardData, nextRow, startCol, magnetLockSet)) break;
+                    if (!isCellDraggableInPlay(boardData, nextRow, startCol)) break;
                     cells.push({ row: nextRow, col: startCol });
                     nextRow += step;
                 }
@@ -3553,8 +3543,7 @@
             const boardData = playModeState.boardData;
             if (!Array.isArray(boardData)) return false;
 
-            const magnetLockSet = buildMagnetLockSet(boardData);
-            if (!isCellDraggableInPlay(boardData, row, col, magnetLockSet)) return false;
+            if (!isCellDraggableInPlay(boardData, row, col)) return false;
 
             cancelPlayDrag(true);
             suppressPlayModeClickOnce = false;
@@ -3617,14 +3606,12 @@
             const directionStep = axisOffset >= 0 ? 1 : -1;
 
             if (!playDragState.dragDirectionStep || playDragState.dragDirectionStep !== directionStep) {
-                const magnetLockSet = buildMagnetLockSet(playModeState.boardData);
                 const axisPositions = collectAxisConnectedDragCells(
                     playModeState.boardData,
                     playDragState.startCell.row,
                     playDragState.startCell.col,
                     playDragState.axis,
-                    directionStep,
-                    magnetLockSet
+                    directionStep
                 );
                 if (!Array.isArray(axisPositions) || axisPositions.length === 0) return;
                 applyPlayDragPositions(playDragState, axisPositions);
@@ -4354,11 +4341,10 @@
             const height = boardData.length;
             const width = boardData[0]?.length || 0;
             if (width === 0) return false;
-            const magnetLockSet = buildMagnetLockSet(boardData);
 
             for (let row = 0; row < height; row++) {
                 for (let col = 0; col < width; col++) {
-                    if (!isCellDraggableInPlay(boardData, row, col, magnetLockSet)) continue;
+                    if (!isCellDraggableInPlay(boardData, row, col)) continue;
                     for (const axis of ['horizontal', 'vertical']) {
                         for (const directionStep of [-1, 1]) {
                             const positions = collectAxisConnectedDragCells(
@@ -4366,8 +4352,7 @@
                                 row,
                                 col,
                                 axis,
-                                directionStep,
-                                magnetLockSet
+                                directionStep
                             );
                             if (!Array.isArray(positions) || positions.length === 0) continue;
                             const positionKeySet = new Set(
@@ -4458,13 +4443,12 @@
 
             const axisOptions = ['horizontal', 'vertical'];
             const directionOptions = [-1, 1];
-            const magnetLockSet = buildMagnetLockSet(boardData);
             const cellOrder = buildShuffledIndexArray(width * height);
 
             for (const cellIndex of cellOrder) {
                 const row = Math.floor(cellIndex / width);
                 const col = cellIndex % width;
-                if (!isCellDraggableInPlay(boardData, row, col, magnetLockSet)) continue;
+                if (!isCellDraggableInPlay(boardData, row, col)) continue;
 
                 const axisOrder = buildShuffledIndexArray(axisOptions.length);
                 for (const axisIndex of axisOrder) {
@@ -4477,8 +4461,7 @@
                             row,
                             col,
                             axis,
-                            directionStep,
-                            magnetLockSet
+                            directionStep
                         );
                         if (!Array.isArray(positions) || positions.length === 0) continue;
 
@@ -4575,41 +4558,10 @@
             return indices;
         }
 
-        function buildMagnetLockSet(boardData) {
-            const lockSet = new Set();
-            if (!Array.isArray(boardData) || boardData.length === 0) return lockSet;
-            const height = boardData.length;
-            const width = boardData[0]?.length || 0;
-            const magnetOffsets = [
-                [-1, -1], [-1, 0], [-1, 1],
-                [0, -1],           [0, 1],
-                [1, -1],  [1, 0],  [1, 1]
-            ];
-
-            for (let row = 0; row < height; row++) {
-                for (let col = 0; col < width; col++) {
-                    const parsed = decodeCellId(boardData[row]?.[col]);
-                    if (parsed.baseId !== MAGNET_CELL_ID) continue;
-                    for (const [dr, dc] of magnetOffsets) {
-                        const nextRow = row + dr;
-                        const nextCol = col + dc;
-                        if (nextRow < 0 || nextRow >= height || nextCol < 0 || nextCol >= width) {
-                            continue;
-                        }
-                        const neighborParsed = decodeCellId(boardData[nextRow]?.[nextCol]);
-                        if (isEmptyCellId(neighborParsed.baseId)) continue;
-                        lockSet.add((nextRow * width) + nextCol);
-                    }
-                }
-            }
-            return lockSet;
-        }
-
-        function canCellMoveByRules(boardData, row, col, magnetLockSet, width) {
+        function canCellMoveByRules(boardData, row, col) {
             const parsed = decodeCellId(boardData[row]?.[col]);
             if (isEmptyCellId(parsed.baseId)) return true;
             if (isImmobileObstacleBaseId(parsed.baseId)) return false;
-            if (magnetLockSet.has((row * width) + col)) return false;
             return true;
         }
 
@@ -4620,11 +4572,9 @@
             getValue,
             setValue,
             getCoord,
-            towardStart,
-            magnetLockSet
+            towardStart
         ) {
             if (!segmentIndices || segmentIndices.length === 0) return false;
-            const boardWidth = boardData[0]?.length || 0;
             const originalValues = segmentIndices.map((index) => getValue(index));
             const originalTokens = tokenBoard
                 ? segmentIndices.map((index) => {
@@ -4638,7 +4588,7 @@
                 const value = originalValues[index];
                 if (isEmptyCellId(value)) continue;
                 const { row, col } = getCoord(segmentIndices[index]);
-                if (!canCellMoveByRules(boardData, row, col, magnetLockSet, boardWidth)) {
+                if (!canCellMoveByRules(boardData, row, col)) {
                     fixedIndices.add(index);
                 }
             }
@@ -4699,7 +4649,6 @@
             if (width === 0) return false;
 
             let changed = false;
-            const magnetLockSet = buildMagnetLockSet(boardData);
             const topRows = getPartitionIndices(height, true);
             const bottomRows = getPartitionIndices(height, false);
             const leftCols = getPartitionIndices(width, true);
@@ -4716,8 +4665,7 @@
                         if (Array.isArray(tokenBoard)) tokenBoard[rowIndex][colIndex] = token;
                     },
                     (rowIndex) => ({ row: rowIndex, col: colIndex }),
-                    towardTop,
-                    magnetLockSet
+                    towardTop
                 );
                 if (segmentChanged) changed = true;
             };
@@ -4733,8 +4681,7 @@
                         if (Array.isArray(tokenBoard)) tokenBoard[rowIndex][colIndex] = token;
                     },
                     (colIndex) => ({ row: rowIndex, col: colIndex }),
-                    towardLeft,
-                    magnetLockSet
+                    towardLeft
                 );
                 if (segmentChanged) changed = true;
             };
@@ -4891,13 +4838,12 @@ const BOMB_CELL_ID = 99;
 const ATTACHMENT_MULTIPLIER = 1000;
 const ATTACHMENT_IDS = new Set([1, 5]);
 const STONE_CELL_ID = 501;
-const MAGNET_CELL_ID = 503;
+const LEGACY_MAGNET_CELL_ID = 503;
 const ICE_LEVEL_1_CELL_ID = 504;
 const ICE_LEVEL_2_CELL_ID = 505;
 const ICE_LEVEL_3_CELL_ID = 506;
 const IMMOBILE_OBSTACLE_IDS = new Set([
   STONE_CELL_ID,
-  MAGNET_CELL_ID,
   ICE_LEVEL_1_CELL_ID,
   ICE_LEVEL_2_CELL_ID,
   ICE_LEVEL_3_CELL_ID
@@ -4935,12 +4881,17 @@ function decodeCellId(cellId) {
   }
   if (cellId >= ATTACHMENT_MULTIPLIER) {
     const attachmentId = Math.floor(cellId / ATTACHMENT_MULTIPLIER);
-    const baseId = cellId % ATTACHMENT_MULTIPLIER;
+    const rawBaseId = cellId % ATTACHMENT_MULTIPLIER;
+    const baseId = rawBaseId === LEGACY_MAGNET_CELL_ID ? STONE_CELL_ID : rawBaseId;
     if (ATTACHMENT_IDS.has(attachmentId) && baseId > 0) {
       return { baseId, attachmentId, hasAttachment: true };
     }
   }
-  return { baseId: cellId, attachmentId: null, hasAttachment: false };
+  return {
+    baseId: cellId === LEGACY_MAGNET_CELL_ID ? STONE_CELL_ID : cellId,
+    attachmentId: null,
+    hasAttachment: false
+  };
 }
 
 function isNormalBaseId(baseId) {
@@ -5298,17 +5249,15 @@ function buildPlayDragPositionKey(row, col) {
   return row + '-' + col;
 }
 
-function isCellDraggableInPlay(boardData, row, col, magnetLockSet) {
+function isCellDraggableInPlay(boardData, row, col) {
   if (!Array.isArray(boardData)) return false;
-  const width = boardData[0] ? boardData[0].length : 0;
-  if (width === 0) return false;
+  if ((boardData[0] ? boardData[0].length : 0) === 0) return false;
 
   const rawId = boardData[row] ? boardData[row][col] : EMPTY_CELL_ID;
   const parsed = decodeCellId(rawId);
   if (isEmptyCellId(parsed.baseId)) return false;
   if (!isRemovableBaseId(parsed.baseId)) return false;
   if (isImmobileObstacleBaseId(parsed.baseId)) return false;
-  if (magnetLockSet && magnetLockSet.has((row * width) + col)) return false;
   return true;
 }
 
@@ -5317,21 +5266,20 @@ function collectAxisConnectedDragCells(
   startRow,
   startCol,
   axis,
-  directionStep,
-  magnetLockSet
+  directionStep
 ) {
   if (!Array.isArray(boardData) || boardData.length === 0) return [];
   const height = boardData.length;
   const width = boardData[0] ? boardData[0].length : 0;
   if (width === 0) return [];
-  if (!isCellDraggableInPlay(boardData, startRow, startCol, magnetLockSet)) return [];
+  if (!isCellDraggableInPlay(boardData, startRow, startCol)) return [];
 
   const cells = [{ row: startRow, col: startCol }];
   const step = directionStep >= 0 ? 1 : -1;
   if (axis === 'horizontal') {
     let nextCol = startCol + step;
     while (nextCol >= 0 && nextCol < width) {
-      if (!isCellDraggableInPlay(boardData, startRow, nextCol, magnetLockSet)) break;
+      if (!isCellDraggableInPlay(boardData, startRow, nextCol)) break;
       cells.push({ row: startRow, col: nextCol });
       nextCol += step;
     }
@@ -5342,7 +5290,7 @@ function collectAxisConnectedDragCells(
   if (axis === 'vertical') {
     let nextRow = startRow + step;
     while (nextRow >= 0 && nextRow < height) {
-      if (!isCellDraggableInPlay(boardData, nextRow, startCol, magnetLockSet)) break;
+      if (!isCellDraggableInPlay(boardData, nextRow, startCol)) break;
       cells.push({ row: nextRow, col: startCol });
       nextRow += step;
     }
@@ -5437,13 +5385,12 @@ function pickRandomPlayableDragActionForBoard(boardData) {
 
   const axisOptions = ['horizontal', 'vertical'];
   const directionOptions = [-1, 1];
-  const magnetLockSet = buildMagnetLockSet(boardData);
   const cellOrder = buildShuffledIndexArray(width * height);
 
   for (const cellIndex of cellOrder) {
     const row = Math.floor(cellIndex / width);
     const col = cellIndex % width;
-    if (!isCellDraggableInPlay(boardData, row, col, magnetLockSet)) continue;
+    if (!isCellDraggableInPlay(boardData, row, col)) continue;
 
     const axisOrder = buildShuffledIndexArray(axisOptions.length);
     for (const axisIndex of axisOrder) {
@@ -5456,8 +5403,7 @@ function pickRandomPlayableDragActionForBoard(boardData) {
           row,
           col,
           axis,
-          directionStep,
-          magnetLockSet
+          directionStep
         );
         if (!Array.isArray(positions) || positions.length === 0) continue;
 
@@ -5560,39 +5506,10 @@ function getPartitionIndices(length, isFirstPart) {
   return indices;
 }
 
-function buildMagnetLockSet(boardData) {
-  const lockSet = new Set();
-  if (!Array.isArray(boardData) || boardData.length === 0) return lockSet;
-  const height = boardData.length;
-  const width = boardData[0] ? boardData[0].length : 0;
-  const magnetOffsets = [
-    [-1, -1], [-1, 0], [-1, 1],
-    [0, -1],           [0, 1],
-    [1, -1],  [1, 0],  [1, 1]
-  ];
-
-  for (let row = 0; row < height; row++) {
-    for (let col = 0; col < width; col++) {
-      const parsed = decodeCellId(boardData[row][col]);
-      if (parsed.baseId !== MAGNET_CELL_ID) continue;
-      for (const [dr, dc] of magnetOffsets) {
-        const nextRow = row + dr;
-        const nextCol = col + dc;
-        if (nextRow < 0 || nextRow >= height || nextCol < 0 || nextCol >= width) continue;
-        const neighborParsed = decodeCellId(boardData[nextRow][nextCol]);
-        if (isEmptyCellId(neighborParsed.baseId)) continue;
-        lockSet.add((nextRow * width) + nextCol);
-      }
-    }
-  }
-  return lockSet;
-}
-
-function canCellMoveByRules(boardData, row, col, magnetLockSet, width) {
+function canCellMoveByRules(boardData, row, col) {
   const parsed = decodeCellId(boardData[row][col]);
   if (isEmptyCellId(parsed.baseId)) return true;
   if (isImmobileObstacleBaseId(parsed.baseId)) return false;
-  if (magnetLockSet.has((row * width) + col)) return false;
   return true;
 }
 
@@ -5602,11 +5519,9 @@ function compactSegmentByRules(
   getValue,
   setValue,
   getCoord,
-  towardStart,
-  magnetLockSet
+  towardStart
 ) {
   if (!segmentIndices || segmentIndices.length === 0) return false;
-  const boardWidth = boardData[0] ? boardData[0].length : 0;
   const originalValues = segmentIndices.map((index) => getValue(index));
 
   const fixedIndices = new Set();
@@ -5614,7 +5529,7 @@ function compactSegmentByRules(
     const value = originalValues[index];
     if (isEmptyCellId(value)) continue;
     const coord = getCoord(segmentIndices[index]);
-    if (!canCellMoveByRules(boardData, coord.row, coord.col, magnetLockSet, boardWidth)) {
+    if (!canCellMoveByRules(boardData, coord.row, coord.col)) {
       fixedIndices.add(index);
     }
   }
@@ -5662,7 +5577,6 @@ function applyDirectionShiftOnce(boardData, direction) {
   if (width === 0) return false;
 
   let changed = false;
-  const magnetLockSet = buildMagnetLockSet(boardData);
   const topRows = getPartitionIndices(height, true);
   const bottomRows = getPartitionIndices(height, false);
   const leftCols = getPartitionIndices(width, true);
@@ -5675,8 +5589,7 @@ function applyDirectionShiftOnce(boardData, direction) {
       (rowIndex) => boardData[rowIndex][colIndex],
       (rowIndex, value) => { boardData[rowIndex][colIndex] = value; },
       (rowIndex) => ({ row: rowIndex, col: colIndex }),
-      towardTop,
-      magnetLockSet
+      towardTop
     );
     if (segmentChanged) changed = true;
   };
@@ -5688,8 +5601,7 @@ function applyDirectionShiftOnce(boardData, direction) {
       (colIndex) => boardData[rowIndex][colIndex],
       (colIndex, value) => { boardData[rowIndex][colIndex] = value; },
       (colIndex) => ({ row: rowIndex, col: colIndex }),
-      towardLeft,
-      magnetLockSet
+      towardLeft
     );
     if (segmentChanged) changed = true;
   };
@@ -7713,7 +7625,6 @@ function runBatch(games, baseBoardData, direction) {
                 [`attachment-${ATTACHMENT_ICESHELL_ID}`]: '冰壳附着',
                 [`obstacle-${STONE_CELL_ID}`]: '石头',
                 [`obstacle-${WOOD_CELL_ID}`]: '木块',
-                [`obstacle-${MAGNET_CELL_ID}`]: '磁铁',
                 [`obstacle-${ICE_LEVEL_1_CELL_ID}`]: '冰块1',
                 [`obstacle-${ICE_LEVEL_2_CELL_ID}`]: '冰块2',
                 [`obstacle-${ICE_LEVEL_3_CELL_ID}`]: '冰块3'
@@ -7745,7 +7656,6 @@ function runBatch(games, baseBoardData, direction) {
                 `attachment-${ATTACHMENT_ICESHELL_ID}`,
                 `obstacle-${STONE_CELL_ID}`,
                 `obstacle-${WOOD_CELL_ID}`,
-                `obstacle-${MAGNET_CELL_ID}`,
                 `obstacle-${ICE_LEVEL_1_CELL_ID}`,
                 `obstacle-${ICE_LEVEL_2_CELL_ID}`,
                 `obstacle-${ICE_LEVEL_3_CELL_ID}`
@@ -7794,7 +7704,7 @@ function runBatch(games, baseBoardData, direction) {
 
         function getBoardCellAspectRatioForPreview() {
             const fallbackWidth = 150;
-            const fallbackHeight = 162;
+            const fallbackHeight = 150;
             const firstCell = document.getElementById('cell-0-0');
             if (!firstCell) {
                 return {
@@ -7862,13 +7772,13 @@ function runBatch(games, baseBoardData, direction) {
             const maxPreviewBoardWidth = 260;
             const maxPreviewBoardHeight = 220;
             const boardCellSize = getBoardCellAspectRatioForPreview();
-            const ratio = boardCellSize.ratio > 0 ? boardCellSize.ratio : (162 / 150);
+            const ratio = boardCellSize.ratio > 0 ? boardCellSize.ratio : 1;
             const widthByCols = Math.floor((maxPreviewBoardWidth / safeColCount) - 1);
             const widthByRows = Math.floor((maxPreviewBoardHeight / safeRowCount) / ratio);
             const cellWidth = Math.max(10, Math.min(18, Math.min(widthByCols, widthByRows)));
             const cellHeight = Math.max(10, Math.round(cellWidth * ratio));
             board.style.gridTemplateColumns = `repeat(${safeColCount}, ${cellWidth}px)`;
-            const previewScale = Math.min(cellWidth / 150, cellHeight / 162);
+            const previewScale = Math.min(cellWidth / 150, cellHeight / 150);
             board.style.setProperty('--preview-scale', previewScale.toFixed(4));
 
             for (const row of savedItem.boardData) {
